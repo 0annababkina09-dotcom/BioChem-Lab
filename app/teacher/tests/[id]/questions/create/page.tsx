@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { supabase } from "@/lib/supabase";
@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 export default function CreateQuestionPage() {
   const { id } = useParams();
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [question, setQuestion] = useState("");
   const [a, setA] = useState("");
@@ -16,54 +17,54 @@ export default function CreateQuestionPage() {
   const [d, setD] = useState("");
   const [correct, setCorrect] = useState("A");
 
-  const [image, setImage] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  async function saveQuestion() {
-    let imageUrl: string | null = null;
+  async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    // Загружаем изображение в Storage
-    if (image) {
-        const extension = image.name.split(".").pop();
+    setUploading(true);
 
-        const fileName = `${Date.now()}.${extension}`;
+    const fileName = `${Date.now()}_${file.name}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("question-images")
-        .upload(fileName, image);
+    const { error: uploadError } = await supabase.storage
+      .from("question-images")
+      .upload(fileName, file);
 
-      if (uploadError) {
-        console.error(uploadError);
-        alert("Ошибка загрузки изображения");
-        return;
-      }
-
-      const { data } = supabase.storage
-        .from("question-images")
-        .getPublicUrl(fileName);
-
-      imageUrl = data.publicUrl;
+    if (uploadError) {
+      console.error(uploadError);
+      alert("Ошибка загрузки изображения");
+      setUploading(false);
+      return;
     }
 
-    // Сохраняем вопрос
-    const { error } = await supabase
-      .from("questions")
-      .insert({
-        test_id: id,
-        question: question,
-        option_a: a,
-        option_b: b,
-        option_c: c,
-        option_d: d,
-        correct_answer: correct,
-        image_url: imageUrl,
-        points: 1,
-      });
+    const { data } = supabase.storage
+      .from("question-images")
+      .getPublicUrl(fileName);
 
-      if (error) {
-        console.error(error);
-        alert(JSON.stringify(error));
-        return;
-      }
+    setImageUrl(data.publicUrl);
+    setUploading(false);
+  }
+
+  async function saveQuestion() {
+    const { error } = await supabase.from("questions").insert({
+      test_id: id,
+      question: question,
+      option_a: a,
+      option_b: b,
+      option_c: c,
+      option_d: d,
+      correct_answer: correct,
+      image_url: imageUrl,
+      points: 1,
+    });
+
+    if (error) {
+      console.error(error);
+      alert(JSON.stringify(error));
+      return;
+    }
 
     alert("Вопрос сохранён!");
 
@@ -98,23 +99,43 @@ export default function CreateQuestionPage() {
           style={input}
         />
 
-        <label
-          style={{
-            fontWeight: 600,
-          }}
-        >
-          Изображение (необязательно)
-        </label>
-
         <input
+          ref={fileInputRef}
           type="file"
           accept="image/*"
-          onChange={(e) => {
-            if (e.target.files?.length) {
-              setImage(e.target.files[0]);
-            }
-          }}
+          onChange={handleImageSelect}
+          style={{ display: "none" }}
         />
+
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          style={{
+            background: "#0B5ED7",
+            color: "white",
+            border: "none",
+            borderRadius: 10,
+            padding: "12px 18px",
+            cursor: uploading ? "wait" : "pointer",
+            fontSize: 16,
+            alignSelf: "flex-start",
+          }}
+        >
+          {uploading ? "⏳ Загрузка..." : "📷 Загрузить изображение"}
+        </button>
+
+        {imageUrl && (
+          <img
+            src={imageUrl}
+            alt="Предпросмотр"
+            style={{
+              maxWidth: "100%",
+              borderRadius: 12,
+              marginBottom: 8,
+            }}
+          />
+        )}
 
         <input
           placeholder="Ответ A"
